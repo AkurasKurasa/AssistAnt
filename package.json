@@ -1,0 +1,27 @@
+{
+  "name": "assistant",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AssistAnt: a multi-agent personal agent that wraps up your day in Notion and plans tomorrow.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "update-models": "node scripts/update-free-apis.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "google-auth-library": "^9.15.0",
+    "next": "^15.1.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.7"
+  }
+}

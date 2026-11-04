@@ -1,0 +1,21 @@
+# Render Blueprint for the public demo (https://render.com/docs/blueprint-spec).
+# Fake data and keyless models only. Don't add your real keys here or in the Render dashboard:
+# PUBLIC_DEMO=1 ignores them anyway, and your own copy runs locally from .env.local.
+services:
+  - type: web
+    name: assistant-demo
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/connectors
+    envVars:
+      - key: PUBLIC_DEMO
+        value: "1"
+      - key: WORKSPACE
+        value: demo
+      - key: CLAUDE_CODE_ENABLED
+        value: "false"
+      - key: NODE_VERSION
+        value: "22"

@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+.env
+.env.local
+data/state.json
+data/knowledge
+data/chats
+secrets
+*.log
+.DS_Store
+data/visitors/
+*.tsbuildinfo
+assistant_work/
