@@ -476,3 +476,33 @@ html, body { min-height: 100%; }
   .chatx { transition: none; }
   .credit, .credit.current, .credit-steps li, .credit.current .credit-a span, .dots i { animation: none; transition: none; }
 }
+
+/* Guided tour: a dimmed page with one spotlighted part and a card explaining it. */
+.tour-open { font-size: 13px; border: 1px solid #DDDAD2; background: var(--bg); border-radius: 8px; height: 32px; padding: 0 12px; color: var(--ink); }
+.tour-open:hover { background: var(--soft); }
+.tour { position: fixed; inset: 0; z-index: 200; }
+.tour-catch { position: fixed; inset: 0; } /* keeps clicks off the page while touring */
+.tour-dim { position: fixed; inset: 0; background: rgba(27, 27, 26, 0.55); }
+.tour-spot { position: fixed; border-radius: 14px; box-shadow: 0 0 0 9999px rgba(27, 27, 26, 0.55), 0 0 0 2px var(--lantern); pointer-events: none; transition: top .25s ease, left .25s ease, width .25s ease, height .25s ease; }
+.tour-card { position: fixed; width: min(380px, calc(100vw - 32px)); background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 18px 18px 14px; box-shadow: 0 18px 40px -16px rgba(20, 20, 18, 0.35); transition: top .25s ease, left .25s ease; }
+.tour-count { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.tour-title { margin: 6px 0 6px; font-size: 17px; font-weight: 650; color: var(--ink); letter-spacing: -0.01em; }
+.tour-body { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--fg); }
+.tour-actions { margin-top: 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.tour-nav { display: flex; gap: 8px; }
+.tour-link { border: 0; background: none; padding: 8px 2px; font-size: 13.5px; color: var(--muted); }
+.tour-link:hover { color: var(--ink); }
+.tour-back { height: 38px; padding: 0 14px; border-radius: 9px; border: 1px solid #DDDAD2; background: var(--bg); font-size: 14px; color: var(--ink); }
+.tour-back:hover { background: var(--soft); }
+.tour-primary { height: 38px; padding: 0 16px; border-radius: 9px; border: 0; background: var(--lantern); color: #FFF; font-weight: 600; font-size: 14px; }
+.tour-primary:hover { background: #CF6A10; }
+@media (max-width: 520px) { .tour-open { padding: 0 10px; } .tour-card { padding: 16px 16px 12px; } }
+@media (prefers-reduced-motion: reduce) { .tour-spot, .tour-card { transition: none; } }
+/* Phones: the tab row scrolls sideways instead of widening the whole page; header items don't wrap. */
+@media (max-width: 640px) {
+  .tabs { overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: none; white-space: nowrap; }
+  .tour-open, .mode-pill, .date { white-space: nowrap; }
+  .bar-right .date { display: none; }
+}

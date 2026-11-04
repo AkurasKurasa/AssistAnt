@@ -6,6 +6,7 @@ import type { AskField, AskItem, RunEvent } from '@/lib/types';
 import { ICON, LOGO_SVG, ENG_LABEL } from './icons';
 import { Floor } from './floor';
 import Chat from './Chat';
+import Tour, { tourSeen } from './Tour';
 
 type View = 'meet' | 'live' | 'kb' | 'src' | 'con';
 interface ChatMeta { id: string; title: string; updatedAt: string; turns: number }
@@ -42,6 +43,10 @@ export default function App() {
   const [mode, setMode] = useState<'demo' | 'notion'>('demo');
   const [listDate, setListDate] = useState('');
   const [publicDemo, setPublicDemo] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
+
+  // First visit: start the guided tour once the page has settled.
+  useEffect(() => { if (tourSeen()) return; const t = setTimeout(() => setTourOpen(true), 700); return () => clearTimeout(t); }, []);
   const [cons, setCons] = useState<Connector[]>([]);
   const [hint, setHint] = useState<string | null>(null);
   const [install, setInstall] = useState<any>(null);
@@ -193,6 +198,7 @@ export default function App() {
       <header className="bar">
         <div className="brand"><span className="mark" dangerouslySetInnerHTML={{ __html: LOGO_SVG }} /><span className="wordmark">Assist<span className="ant">Ant</span></span></div>
         <div className="bar-right">
+          <button className="tour-open" type="button" onClick={() => setTourOpen(true)}>Take the tour</button>
           <span className="mode-pill">{mode === 'notion' ? 'Notion' : 'Demo data'}</span>
           {install && <button className="install" type="button" onClick={async () => { install.prompt(); await install.userChoice; setInstall(null); }}>Install app</button>}
           <span className="date">{date}</span>
@@ -206,12 +212,12 @@ export default function App() {
       </section>
 
       <label className="ask-label" htmlFor="orderInput">Ask or give AssistAnt a task</label>
-      <form className="ask" ref={askRef} autoComplete="off" onSubmit={(e) => { e.preventDefault(); openChat(task.trim() || null); }}>
+      <form className="ask" data-tour="ask" ref={askRef} autoComplete="off" onSubmit={(e) => { e.preventDefault(); openChat(task.trim() || null); }}>
         <span className="ask-prompt" aria-hidden="true">&gt;</span>
         <input id="orderInput" placeholder="what's due tomorrow?" spellCheck={false} value={task} onChange={(e) => setTask(e.target.value)} />
         <button id="send" type="submit" aria-label="Send"><span>send</span><kbd aria-hidden="true">{'↵'}</kbd></button>
       </form>
-      <div className="tries">{SUGGEST.map((s) => <button key={s} type="button" onClick={() => openChat(s)}>{s}</button>)}</div>
+      <div className="tries" data-tour="tries">{SUGGEST.map((s) => <button key={s} type="button" onClick={() => openChat(s)}>{s}</button>)}</div>
       {error && <p className="err">{error}</p>}
       {chats.length > 0 && (
         <div className="recent">
@@ -223,6 +229,7 @@ export default function App() {
           ))}
         </div>
       )}
+      <Tour open={tourOpen} onClose={() => setTourOpen(false)} onView={setView} onTry={() => { setView('live'); send('Give me my morning brief'); }} />
       <Chat open={chatOpen} origin={chatOrigin} first={chatFirst} chatId={chatId} onClose={chatClosed} onRun={(id) => { attach(id); setView('live'); }} />
 
       <div className="tabs" role="tablist" aria-label="Views">
@@ -233,7 +240,7 @@ export default function App() {
         <button className="tab" role="tab" type="button" aria-selected={view === 'con'} onClick={() => setView('con')}>Connectors <span className="tab-count">{conOn}/{cons.length}</span></button>
       </div>
 
-      <section role="tabpanel" hidden={view !== 'meet'}>
+      <section role="tabpanel" data-tour="panel-meet" hidden={view !== 'meet'}>
         <div className="meet">
           <article className="member lead">
             <div className="m-top"><div className="m-icon" dangerouslySetInnerHTML={{ __html: LOGO_SVG.replace('width="24" height="24"', 'width="32" height="32"') }} /><div><div className="m-name">Orchestrator</div></div></div>
@@ -248,7 +255,7 @@ export default function App() {
         </div>
       </section>
 
-      <section role="tabpanel" hidden={view !== 'live'}>
+      <section role="tabpanel" data-tour="panel-live" hidden={view !== 'live'}>
         <div className="floor-scroll">
           <div className="floor" ref={floorRef} aria-label="The crew at work">
             <span className="floor-label" style={{ top: 14 }}>The floor</span>
@@ -279,7 +286,7 @@ export default function App() {
         </div>
       </section>
 
-      <section role="tabpanel" hidden={view !== 'src'}>
+      <section role="tabpanel" data-tour="panel-src" hidden={view !== 'src'}>
         <p className="src-lead">{okCount} of {sources.length} models ready. AssistAnt tries them top to bottom.</p>
         <ul className="mlist">
           {ready.map((s) => (
@@ -314,7 +321,7 @@ export default function App() {
         {listDate && <p className="list-credit">Free providers from <a href="https://github.com/mnfst/awesome-free-llm-apis" target="_blank" rel="noreferrer">awesome-free-llm-apis</a>, list dated {listDate}. Run <code>npm run update-models</code> to refresh it.</p>}
       </section>
 
-      <section role="tabpanel" hidden={view !== 'kb'}>
+      <section role="tabpanel" data-tour="panel-kb" hidden={view !== 'kb'}>
         <p className="src-lead">{kb.length ? `${kb.length} note${kb.length > 1 ? 's' : ''} in your Knowledge Base. Ask about them from the box above.` : 'Add your notes here, then ask about them from the box above.'}</p>
         <div className="kb-actions">
           <label className={'drop' + (dragging ? ' over' : '')}
@@ -340,7 +347,7 @@ export default function App() {
         )}
       </section>
 
-      <section role="tabpanel" hidden={view !== 'con'}>
+      <section role="tabpanel" data-tour="panel-con" hidden={view !== 'con'}>
         <p className="src-lead">{conOn} of {cons.length} connected.{mode === 'demo' ? ' Running on demo data until Notion is connected.' : ''}</p>
         <div className="cgrid">
           {cons.map((c) => (
