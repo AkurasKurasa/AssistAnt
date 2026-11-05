@@ -19,7 +19,9 @@ const short = (d: string | null) => (d ? new Date(d + 'T12:00:00Z').toLocaleDate
 const money = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const done = (i: Item) => i.checked || (!!i.children?.length && i.children.every(done));
 
-export default function Workspace({ refresh, since }: { refresh: number; since: number | null }) {
+export interface Jump { app: App; ref: string; n: number } // n: makes repeat clicks on the same change count
+
+export default function Workspace({ refresh, since, jump }: { refresh: number; since: number | null; jump?: Jump | null }) {
   const [data, setData] = useState<View | null>(null);
   const [app, setApp] = useState<App>('notion');
   const [doc, setDoc] = useState<string | null>(null);
@@ -43,6 +45,14 @@ export default function Workspace({ refresh, since }: { refresh: number; since: 
     setApp(last.app);
     if (last.app === 'docs') setDoc(last.ref);
   }, [fresh]);
+
+  // A click on a change in the result card: open its app (and doc) and bring the panel into view.
+  useEffect(() => {
+    if (!jump) return;
+    setApp(jump.app);
+    if (jump.app === 'docs') setDoc(jump.ref);
+    panel.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  }, [jump]);
 
   // Scroll the panel (not the page) so the newest highlighted item is in view.
   useEffect(() => {

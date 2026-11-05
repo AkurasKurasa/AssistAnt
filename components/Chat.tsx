@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import AntLoader from './AntLoader';
 
 // Full-screen chat that grows out of the home input. Answers roll in like credits:
 // the newest one zooms into place while older ones shrink and drift up.
@@ -136,10 +137,10 @@ export default function Chat({ open, origin, first, chatId, onClose, onRun }: Pr
                 {open && t.steps.length > 0 && (
                   <ol className="credit-steps" aria-label="How AssistAnt worked it out">
                     {t.steps.map((s, k) => <li key={k} style={{ animationDelay: `${k * 60}ms` }}>{s}</li>)}
-                    {t.pending && <li className="thinking">thinking<span className="dots"><i /><i /><i /></span></li>}
+                    {t.pending && <li className="thinking"><AntLoader size={34} />thinking</li>}
                   </ol>
                 )}
-                {t.pending && !t.steps.length && <ol className="credit-steps"><li className="thinking">thinking<span className="dots"><i /><i /><i /></span></li></ol>}
+                {t.pending && !t.steps.length && <ol className="credit-steps"><li className="thinking"><AntLoader size={34} />thinking</li></ol>}
                 {t.answer && (
                   <p className="credit-a">
                     {t.answer.split(/(\s+)/).map((w, k) => <span key={k} style={last ? { animationDelay: `${Math.min(k, 160) * 14}ms` } : undefined}>{w}</span>)}
