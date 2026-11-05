@@ -43,6 +43,7 @@ export default function App() {
   const [mode, setMode] = useState<'demo' | 'notion'>('demo');
   const [listDate, setListDate] = useState('');
   const [publicDemo, setPublicDemo] = useState(false);
+  const [pass, setPass] = useState(false); // opened with the showcase access code
   const [tourOpen, setTourOpen] = useState(false);
 
   // First visit: start the guided tour once the page has settled.
@@ -70,7 +71,7 @@ export default function App() {
 
   const loadSources = useCallback(async () => {
     const j = await (await fetch('/api/sources')).json();
-    setSources(j.sources); setBudget(j.budget); setMode(j.mode); setListDate(j.catalogUpdated || ''); setPublicDemo(!!j.publicDemo);
+    setSources(j.sources); setBudget(j.budget); setMode(j.mode); setListDate(j.catalogUpdated || ''); setPublicDemo(!!j.publicDemo); setPass(!!j.pass);
   }, []);
   const loadCons = useCallback(async () => { setCons((await (await fetch('/api/connectors')).json()).connectors); }, []);
   const loadChats = useCallback(async () => { setChats((await (await fetch('/api/chats')).json()).chats); }, []);
@@ -204,7 +205,7 @@ export default function App() {
           <span className="date">{date}</span>
         </div>
       </header>
-      {publicDemo && <p className="demo-banner">Public demo · fake Notion and Sheets data, free keyless models · your changes are private to you and reset when the server sleeps.</p>}
+      {publicDemo && <p className="demo-banner">{pass ? 'Showcase pass · fake Notion, Sheets and Docs data, full set of AI models' : 'Public demo · fake Notion, Sheets and Docs data, free keyless models'} · your changes are private to you and reset when the server sleeps.</p>}
 
       <section className="head">
         <h1 className="wordmark">Assist<span className="ant">Ant</span></h1>

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { CATALOG, CATALOG_ORDER } from './catalog';
-import { PUBLIC_DEMO } from '../visitor';
+import { PUBLIC_DEMO, hasPass } from '../visitor';
 
 export type ProviderId = string;
 export type CallTier = 'fast' | 'smart' | 'best';
@@ -21,7 +21,7 @@ export interface Provider {
   trains?: boolean;     // provider may use or log prompts
   keyless?: boolean;    // works without a key
   catalog?: boolean;    // comes from the free LLM API list
-  setup: () => Promise<{ ok: boolean; why?: string }>;
+  setup: () => Promise<{ ok: boolean; why?: string; note?: string }>; // note: extra detail for Sources
   call: (prompt: string, system?: string, tier?: CallTier) => Promise<string>;
 }
 
@@ -100,6 +100,28 @@ async function claudeSetup() {
   return claudeCheck;
 }
 
+// ---------- FreeLLMAPI: a self-hosted router over many free providers (github.com/tashfeenahmed/freellmapi) ----------
+// One OpenAI-compatible endpoint and one "unified" key in front of every provider key you've added to it.
+const freellmBase = () => {
+  const u = (process.env.FREELLMAPI_URL || '').trim().replace(/\/+$/, '');
+  return u && !/\/v1$/.test(u) ? u + '/v1' : u;
+};
+let freellmCheck: { at: number; ok: boolean; why?: string; note?: string } | null = null;
+
+async function freellmSetup() {
+  if (!process.env.FREELLMAPI_URL || !process.env.FREELLMAPI_KEY) return { ok: false, why: 'Not set up · add FREELLMAPI_URL and FREELLMAPI_KEY' };
+  if (freellmCheck && Date.now() - freellmCheck.at < 60_000) return freellmCheck;
+  try {
+    const r = await fetch(freellmBase() + '/models', { headers: { authorization: `Bearer ${process.env.FREELLMAPI_KEY}` }, signal: AbortSignal.timeout(3000) });
+    if (!r.ok) throw new Error(String(r.status));
+    const n = ((await r.json()).data || []).length;
+    freellmCheck = { at: Date.now(), ok: true, note: `routes across ${n} model${n === 1 ? '' : 's'}` };
+  } catch (e) {
+    freellmCheck = { at: Date.now(), ok: false, why: `Router not reachable (${e instanceof Error ? e.message : 'error'})` };
+  }
+  return freellmCheck;
+}
+
 const keyed = (name: string) => async () => (process.env[name] ? { ok: true } : { ok: false, why: `No API key yet · add ${name}` });
 
 export const PROVIDERS: Record<string, Provider> = {
@@ -107,6 +129,12 @@ export const PROVIDERS: Record<string, Provider> = {
     id: 'claudesub', vendor: 'Claude', name: 'Pro/Max plan', short: 'claude · your plan', cap: 0, sub: true,
     setup: claudeSetup,
     call: (prompt, system) => runClaude(['-p', '--output-format', 'text'], (system ? system + '\n\n' : '') + prompt),
+  },
+  freellmapi: {
+    id: 'freellmapi', vendor: 'FreeLLMAPI', name: 'your router', short: 'freellmapi', cap: 0, keyUrl: 'https://github.com/tashfeenahmed/freellmapi',
+    setup: freellmSetup,
+    // "auto" lets FreeLLMAPI pick the best healthy model; FREELLMAPI_MODEL can name a model or an auto:<profile> chain.
+    call: (p, s) => openAICompatible(freellmBase() + '/chat/completions', process.env.FREELLMAPI_KEY!, process.env.FREELLMAPI_MODEL || 'auto')(p, s),
   },
   groq120: {
     id: 'groq120', vendor: 'Groq', name: 'gpt-oss-120b', short: 'groq 120b', cap: 1000, keyUrl: 'https://console.groq.com/keys', setup: keyed('GROQ_API_KEY'),
@@ -175,8 +203,8 @@ for (const c of CATALOG) {
       return { ok: true };
     },
     // The public demo never sends a key, even if one is set on the host.
-    call: (prompt, system, tier) => openAICompatible(baseUrl().replace(/\/$/, '') + '/chat/completions', PUBLIC_DEMO ? '' : process.env[c.envKey || ''] || '', tier === 'fast' ? c.fast : c.smart)(prompt, system),
+    call: (prompt, system, tier) => openAICompatible(baseUrl().replace(/\/$/, '') + '/chat/completions', PUBLIC_DEMO && !hasPass() ? '' : process.env[c.envKey || ''] || '', tier === 'fast' ? c.fast : c.smart)(prompt, system),
   };
 }
 
-export const ORDER: ProviderId[] = ['claudesub', 'groq120', 'groq20', 'qwen', 'flash', 'lite', 'openrouter', ...CATALOG_ORDER, 'ollama', 'claudeapi'];
+export const ORDER: ProviderId[] = ['claudesub', 'freellmapi', 'groq120', 'groq20', 'qwen', 'flash', 'lite', 'openrouter', ...CATALOG_ORDER, 'ollama', 'claudeapi'];

@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 
 // PUBLIC_DEMO=1 is set only on the public host. It runs AssistAnt on fake data with no keys,
@@ -7,15 +8,31 @@ import path from 'node:path';
 export const PUBLIC_DEMO = process.env.PUBLIC_DEMO === '1';
 export const LOCAL = 'local';
 
-const store = new AsyncLocalStorage<string>();
+const store = new AsyncLocalStorage<{ id: string; pass: boolean }>();
 const ID = /^[a-z0-9-]{8,64}$/i;
 
 export function visitorId(): string {
-  return store.getStore() || LOCAL;
+  return store.getStore()?.id || LOCAL;
 }
 
-export function runAs<T>(id: string, fn: () => T): T {
-  return store.run(id, fn);
+// Visitors who opened the showcase with ?code=DEMO_ACCESS_CODE (say, a professor) also get the
+// keyed models configured on the host. Everyone else stays on the keyless gateways.
+export function hasPass(): boolean {
+  return PUBLIC_DEMO && !!store.getStore()?.pass;
+}
+
+export function runAs<T>(id: string, fn: () => T, pass = false): T {
+  return store.run({ id, pass }, fn);
+}
+
+export const PASS_COOKIE = 'aa_pass';
+const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
+
+function passFrom(req: Request): boolean {
+  const code = process.env.DEMO_ACCESS_CODE || '';
+  if (!PUBLIC_DEMO || code.length < 6) return false; // no code set, or too short to be a secret
+  const cookie = (req.headers.get('cookie') || '').split(';').map((c) => c.trim()).find((c) => c.startsWith(PASS_COOKIE + '='))?.slice(PASS_COOKIE.length + 1);
+  return cookie === sha256(code);
 }
 
 // data/<parts> locally; data/visitors/<id>/<parts> in the public demo.
@@ -29,7 +46,7 @@ export function dataDir(...parts: string[]): string {
 export function visitorRoute<A extends unknown[]>(fn: (req: Request, ...rest: A) => Promise<Response>) {
   return (req: Request, ...rest: A): Promise<Response> => {
     const raw = req.headers.get('x-visitor-id') || '';
-    return runAs(PUBLIC_DEMO && ID.test(raw) ? raw : LOCAL, () => fn(req, ...rest));
+    return runAs(PUBLIC_DEMO && ID.test(raw) ? raw : LOCAL, () => fn(req, ...rest), passFrom(req));
   };
 }
 
