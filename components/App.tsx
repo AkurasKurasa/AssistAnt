@@ -7,6 +7,7 @@ import { ICON, LOGO_SVG, ENG_LABEL } from './icons';
 import { Floor } from './floor';
 import Chat from './Chat';
 import Tour, { tourSeen } from './Tour';
+import Workspace from './Workspace';
 
 type View = 'meet' | 'live' | 'kb' | 'src' | 'con';
 interface ChatMeta { id: string; title: string; updatedAt: string; turns: number }
@@ -45,6 +46,9 @@ export default function App() {
   const [publicDemo, setPublicDemo] = useState(false);
   const [pass, setPass] = useState(false); // opened with the showcase access code
   const [tourOpen, setTourOpen] = useState(false);
+  const [wsTick, setWsTick] = useState(0); // bump to refresh the Workspace panel
+  const [runSince, setRunSince] = useState<number | null>(null); // changes after this are "just now"
+  const refreshWs = () => setWsTick((n) => n + 1);
 
   // First visit: start the guided tour once the page has settled.
   useEffect(() => { if (tourSeen()) return; const t = setTimeout(() => setTourOpen(true), 700); return () => clearTimeout(t); }, []);
@@ -99,18 +103,18 @@ export default function App() {
   async function handle(e: RunEvent) {
     const f = floor.current!;
     switch (e.t) {
-      case 'start': f.reset(); f.busy(true); setMsgs([]); setTray({ kind: 'working' }); setRunning(true); setView('live'); break;
+      case 'start': f.reset(); f.busy(true); setMsgs([]); setTray({ kind: 'working' }); setRunning(true); setView('live'); setRunSince((e.at ?? Date.now()) - 1000); refreshWs(); break;
       case 'plan': f.setLineup(e.lineup); await new Promise((r) => setTimeout(r, 700)); break;
       case 'orch': f.orch(e.text); break;
       case 'msg': await f.msg(e.from, e.to, e.label, e.kind); addMsg({ from: e.from, to: e.to, text: e.text, kind: e.kind }); break;
-      case 'work': await f.work(e.agent, e.text, e.model); break;
+      case 'work': refreshWs(); await f.work(e.agent, e.text, e.model); break;
       case 'state': f.setState(e.agent, e.state === 'ready' ? 'ready' : e.state); break;
       case 'sys': addMsg({ from: 'orch', text: e.text, kind: 'sys' }); break;
       case 'ask': setTray(e.kind === 'approve' ? { kind: 'approve', id: e.id, items: e.items, answers: e.items.map(() => undefined) } : { kind: 'form', id: e.id, title: e.title, fields: e.fields }); break;
       case 'answered': setTray({ kind: 'working' }); break;
       case 'result': setTray({ kind: 'result', say: e.say, rows: e.rows, note: e.note }); break;
       case 'error': addMsg({ from: 'orch', text: 'Error: ' + e.text, kind: 'alert' }); break;
-      case 'end': f.finish(); setRunning(false); loadSources(); break;
+      case 'end': f.finish(); setRunning(false); loadSources(); refreshWs(); break;
     }
   }
 
@@ -265,6 +269,7 @@ export default function App() {
             <svg id="wires" aria-hidden="true"><g id="edgeG" /></svg>
           </div>
         </div>
+        <Workspace refresh={wsTick} since={runSince} />
         <div className="lower">
           <section aria-label="Conversation">
             <h2>Conversation <small>{msgs.filter((m) => m.kind !== 'sys').length} messages</small></h2>

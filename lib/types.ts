@@ -48,7 +48,7 @@ export interface AskItem { title: string; why: string }
 export interface AskField { key: string; label: string; placeholder?: string }
 
 export type RunEvent =
-  | { t: 'start'; task: string; scheduled?: boolean }
+  | { t: 'start'; task: string; scheduled?: boolean; at?: number } // at: server time the run started (ms)
   | { t: 'plan'; title: string; lineup: AgentId[][] }
   | { t: 'orch'; text: string }
   | { t: 'msg'; from: NodeId | 'you'; to: NodeId | 'you'; label: string; text: string; kind?: 'reply' | 'alert' }
