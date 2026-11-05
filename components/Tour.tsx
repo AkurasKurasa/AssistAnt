@@ -1,14 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import TourHook from './TourHook';
 
 // First-visit guided tour: dims the page, spotlights one part at a time and explains it.
 // Steps point at elements marked data-tour="…" in App.tsx; a step without a target is centred.
 export type TourView = 'meet' | 'live' | 'kb' | 'src' | 'con';
-interface Step { target?: string; view?: TourView; title: string; body: string }
+interface Step { target?: string; view?: TourView; title: string; body: string; hook?: boolean } // hook: the animated opening scene
 
 const STEPS: Step[] = [
-  { title: 'Welcome to AssistAnt', body: 'A crew of AI agents that wraps up your day and plans tomorrow. Everything here runs on a fictional person’s sample data, so try anything. The tour takes about a minute.' },
+  { hook: true, title: 'Why AssistAnt exists', body: 'Everything here runs on a fictional person’s sample data, so try anything. The tour takes about a minute.' },
   { target: 'ask', title: 'Ask or give a task', body: 'Type in plain words. Questions are answered from the notes, with sources. Tasks like “add eggs to groceries” go to the crew.' },
   { target: 'tries', title: 'Not sure what to type?', body: 'These shortcuts run real routines on the sample data, start to finish.' },
   { target: 'panel-meet', view: 'meet', title: 'Meet the crew', body: 'An Orchestrator and eleven specialists. A few use AI models; most are plain code, so they’re instant and free.' },
@@ -48,7 +49,7 @@ export default function Tour({ open, onClose, onView, onTry }: { open: boolean; 
   const place = useCallback(() => {
     // Visible area, not the layout width: an overflowing page must not push the card off screen.
     const vw = document.documentElement.clientWidth, vh = window.innerHeight;
-    const ch = cardRef.current?.offsetHeight ?? 200, cw = Math.min(380, vw - 32);
+    const ch = cardRef.current?.offsetHeight ?? 200, cw = Math.min(step.hook ? 460 : 380, vw - 32);
     const el = step.target ? document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`) : null;
     if (!el) { setSpot(null); setCard({ top: Math.max(16, (vh - ch) / 2), left: (vw - cw) / 2 }); return; }
     const r = el.getBoundingClientRect();
@@ -104,10 +105,11 @@ export default function Tour({ open, onClose, onView, onTry }: { open: boolean; 
     <div className="tour" aria-live="polite">
       <div className="tour-catch" />
       {spot ? <div className="tour-spot" style={spot} /> : <div className="tour-dim" />}
-      <div className="tour-card" ref={cardRef} role="dialog" aria-modal="true" aria-labelledby="tour-title" aria-describedby="tour-body"
+      <div className={'tour-card' + (step.hook ? ' has-hook' : '')} ref={cardRef} role="dialog" aria-modal="true" aria-labelledby="tour-title" aria-describedby="tour-body"
         style={card ? { top: card.top, left: card.left } : { visibility: 'hidden' }}>
         <div className="tour-count">{i + 1} of {STEPS.length}</div>
         <h2 id="tour-title" className="tour-title">{step.title}</h2>
+        {step.hook && <TourHook />}
         <p id="tour-body" className="tour-body">{step.body}</p>
         <div className="tour-actions">
           {last ? (
@@ -120,7 +122,7 @@ export default function Tour({ open, onClose, onView, onTry }: { open: boolean; 
               <button type="button" className="tour-link" onClick={() => close()}>Skip tour</button>
               <span className="tour-nav">
                 {i > 0 && <button type="button" className="tour-back" onClick={() => setI(i - 1)}>Back</button>}
-                <button type="button" className="tour-primary" ref={primaryRef} onClick={() => setI(i + 1)}>{i === 0 ? 'Start' : 'Next'}</button>
+                <button type="button" className="tour-primary" ref={primaryRef} onClick={() => setI(i + 1)}>{i === 0 ? 'Start the tour' : 'Next'}</button>
               </span>
             </>
           )}

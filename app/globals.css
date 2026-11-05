@@ -506,3 +506,25 @@ html, body { min-height: 100%; }
   .tour-open, .mode-pill, .date { white-space: nowrap; }
   .bar-right .date { display: none; }
 }
+
+/* Tour opening scene: scattered pieces of a day, picked up and carried by the ant. */
+.tour-card.has-hook { width: min(460px, calc(100vw - 32px)); }
+.hook-stage { position: relative; height: 172px; margin: 10px 0 12px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background-color: var(--floor); background-image: radial-gradient(var(--dot) 1px, transparent 1px); background-size: 14px 14px; }
+.hook-chip { position: absolute; transition: left .9s cubic-bezier(.2, .8, .2, 1), top .9s cubic-bezier(.2, .8, .2, 1), transform .9s cubic-bezier(.2, .8, .2, 1); }
+.hook-chip > span { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); box-shadow: 0 3px 8px -5px rgba(20, 20, 18, .35); font-size: 12px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.hook-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--lantern); }
+.hook-chip:nth-child(even) i { background: var(--ink); }
+.hook[data-phase="0"] .hook-chip > span { animation: hook-bob 2.4s ease-in-out infinite; }
+.hook-ant { position: absolute; bottom: 2px; width: 76px; height: 76px; transform: translateX(-50%); transition: left 1.1s cubic-bezier(.3, .7, .2, 1); }
+.hook-ant svg { display: block; }
+.hook-ant.walking svg { animation: hook-walk .22s ease-in-out 6 alternate; }
+.hook[data-phase="2"] .hook-ant svg { animation: hook-hop .5s ease-out 1; }
+.hook-line { margin: 0 0 8px; min-height: 44px; font-size: 15px; line-height: 1.45; font-weight: 600; color: var(--ink); animation: hook-in .45s ease both; }
+.hook-beats { display: flex; gap: 5px; margin-bottom: 10px; }
+.hook-beats span { width: 18px; height: 3px; border-radius: 2px; background: var(--line); transition: background .3s; }
+.hook-beats span.on { background: var(--lantern); }
+@keyframes hook-bob { 50% { transform: translateY(-4px); } }
+@keyframes hook-walk { to { transform: translateY(-3px) rotate(-3deg); } }
+@keyframes hook-hop { 40% { transform: translateY(-8px); } }
+@keyframes hook-in { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .hook *, .hook-line { animation: none !important; transition: none !important; } }
