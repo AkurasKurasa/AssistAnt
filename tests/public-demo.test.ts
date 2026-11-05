@@ -80,10 +80,10 @@ describe('public demo: no real data or keys', () => {
     expect(workspace().mode).toBe('demo');
   });
 
-  it('shows Notion and Sheets as connected to sample data, nothing else', async () => {
+  it('shows Notion, Sheets and Docs as connected to sample data, nothing else', async () => {
     const { connectors } = await import('../lib/connectors');
     const on = connectors().filter((c) => c.connected).map((c) => c.id);
-    expect(on.sort()).toEqual(['notion', 'sheets']);
+    expect(on.sort()).toEqual(['docs', 'notion', 'sheets']);
   });
 
   it('only offers keyless models, switched on', async () => {

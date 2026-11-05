@@ -139,6 +139,11 @@ export const finishDay: Flow = {
     const ok = !!built && !stillToday;
     run.work('checker', ok ? `${weekday(tomorrow)} has ${built!.newTasks.length} new tasks and its routine. ${removeToday ? 'Today is gone.' : 'Today was kept.'}` : 'Something is still off. Flagging it.');
     run.msg('checker', 'orch', ok ? 'All good' : 'Needs a look', ok ? 'Everything checks out.' : 'Please check the Tasks page by hand.', ok ? 'reply' : 'alert');
+    if (ws.writeDoc) {
+      const lines = (xs: string[]) => xs.length ? xs.map((x) => '- ' + x).join('\n') : '- Nothing';
+      await ws.writeDoc(`Daily recap · ${shortDate(today)}`, `${summary}\n\nDone today\n${lines(done.map((i) => clean(i.text)).slice(0, 12))}\n\nOn tomorrow’s page\n${lines((built?.newTasks || []).map((t) => clean(t.text)))}`);
+      run.work('writer', 'Wrote today’s recap in Google Docs.', 'docs api');
+    }
     run.orch('Finished. Ready for the next thing.');
 
     run.emit({
@@ -257,6 +262,10 @@ export const morningBrief: Flow = {
       'Write a short morning brief for the user: 2 to 3 sentences on what matters most today. Plain, calm, no lists, no emoji.',
       () => `${soon.length ? `Due soon: ${soon.slice(0, 3).map((s) => s.name).join(', ')}.` : 'Nothing urgent is due.'} ${day?.newTasks.length ? `You have ${day.newTasks.length} new tasks today.` : ''}`.trim());
     run.work('briefer', short(r.text), r.model);
+    if (ws.writeDoc) {
+      await ws.writeDoc(`Morning brief · ${shortDate(today)}`, `${r.text}\n\nDue soon\n${soon.map((s) => `- ${s.name} (${s.priority}, ${shortDate(s.due!)})`).join('\n') || '- Nothing urgent'}`);
+      run.work('briefer', 'Saved the brief in Google Docs.', 'docs api');
+    }
     run.msg('briefer', 'orch', 'Brief ready', 'Morning brief is ready.', 'reply');
     run.orch('Finished.');
     run.emit({ t: 'result', say: r.text, rows: soon.map((s) => [s.name, `${s.priority}, ${shortDate(s.due!)}`]) });
