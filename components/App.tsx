@@ -260,7 +260,7 @@ export default function App() {
           <div className="floor" ref={floorRef} aria-label="The crew at work">
             <span className="floor-label" style={{ top: 14 }}>The floor</span>
             <div className="bench-line" />
-            <span className="floor-label" style={{ top: 548 }}>Bench</span>
+            <span className="floor-label" style={{ top: 638 }}>Bench</span>
             <svg id="wires" aria-hidden="true"><g id="edgeG" /></svg>
           </div>
         </div>

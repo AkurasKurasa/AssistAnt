@@ -528,3 +528,17 @@ html, body { min-height: 100%; }
 @keyframes hook-hop { 40% { transform: translateY(-8px); } }
 @keyframes hook-in { from { opacity: 0; transform: translateY(4px); } }
 @media (prefers-reduced-motion: reduce) { .hook *, .hook-line { animation: none !important; transition: none !important; } }
+
+/* Live floor: wider than the page column on big screens, and readable cards. */
+.floor-scroll { width: min(1400px, calc(100vw - 48px)); margin-left: calc(50% - min(700px, 50vw - 24px)); }
+.floor { height: 750px; }
+.bench-line { top: 626px; }
+.node { padding: 12px 13px; gap: 8px; }
+.n-name { font-size: 15px; }
+.n-eng { font-size: 12px; }
+.thought { font-size: 13.5px; line-height: 1.45; -webkit-line-clamp: 3; }
+.icon { width: 34px; height: 34px; }
+.node.bench .icon { width: 44px; height: 44px; }
+.node.bench .n-name { font-size: 12.5px; }
+.chip { font-size: 12.5px; padding: 6px 11px; max-width: 280px; }
+@media (max-width: 640px) { .floor-scroll { width: auto; margin-left: 0; } }

@@ -4,7 +4,9 @@ import { ENG_LABEL, ICON, LOGO_SVG } from './icons';
 // Draws the Live floor: the orchestrator, the crew lined up in the order work flows,
 // the bench, and messages travelling along the lines. Plain DOM for smooth animation.
 const NS = 'http://www.w3.org/2000/svg';
-const CARD_W = 150, CARD_H = 104, TOP = 52, STAGE_H = 470;
+// Cards size themselves to the line-up: wide for short routines, as large as fits for long ones.
+const TOP = 52, STAGE_H = 560, GAP = 12, BENCH_Y = 662;
+const W_MIN = 150, W_MAX = 230, H_MAX = 150;
 
 interface NodeRec { id: string; name: string; el: HTMLDivElement; th: HTMLDivElement; en: HTMLDivElement; x: number; y: number; state: string; eng: string }
 
@@ -18,6 +20,8 @@ export class Floor {
   private edgeG: SVGGElement;
   private reduce = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   private alive = true;
+  private cw = 200; // current card width and height
+  private ch = 132;
 
   constructor(private floor: HTMLDivElement) {
     floor.querySelectorAll('.node, .chip').forEach((n) => n.remove());
@@ -57,16 +61,20 @@ export class Floor {
   layout() {
     const width = this.floor.clientWidth || 1120;
     const ncols = Math.max(1, this.cols.length);
+    const tallest = Math.max(1, ...this.cols.map((c) => c.length));
+    this.cw = Math.max(W_MIN, Math.min(W_MAX, (width - 40 - ncols * 28) / (ncols + 1)));
+    this.ch = Math.min(H_MAX, (STAGE_H - (tallest - 1) * GAP) / tallest);
+    const CARD_W = this.cw, CARD_H = this.ch;
     const colW = (width - 40 - CARD_W) / ncols;
     const o = this.nodes.orch;
     o.x = 20; o.y = TOP + (STAGE_H - CARD_H) / 2; this.place(o, CARD_W, CARD_H);
     this.cols.forEach((col, ci) => {
-      const total = col.length * CARD_H + (col.length - 1) * 12, y0 = TOP + (STAGE_H - total) / 2;
-      col.forEach((id, ri) => { const n = this.nodes[id]; n.x = 20 + (ci + 1) * colW; n.y = y0 + ri * (CARD_H + 12); this.place(n, CARD_W, CARD_H); });
+      const total = col.length * CARD_H + (col.length - 1) * GAP, y0 = TOP + (STAGE_H - total) / 2;
+      col.forEach((id, ri) => { const n = this.nodes[id]; n.x = 20 + (ci + 1) * colW; n.y = y0 + ri * (CARD_H + GAP); this.place(n, CARD_W, CARD_H); });
     });
     const benched = AGENTS.filter((a) => this.depth[a.id] === undefined);
-    const gap = Math.min(96, (width - 110) / Math.max(1, benched.length));
-    benched.forEach((a, i) => { const n = this.nodes[a.id]; n.x = 90 + i * gap; n.y = 572; this.place(n, 76, 62); });
+    const gap = Math.min(110, (width - 120) / Math.max(1, benched.length));
+    benched.forEach((a, i) => { const n = this.nodes[a.id]; n.x = 90 + i * gap; n.y = BENCH_Y; this.place(n, 92, 70); });
     Object.values(this.edges).forEach((e) => e.p.setAttribute('d', this.edgeD(e.from, e.to)));
   }
 
@@ -82,6 +90,7 @@ export class Floor {
   private d(id: string) { return id === 'orch' || id === 'you' ? 0 : this.depth[id] ?? 0; }
 
   private edgeD(from: string, to: string) {
+    const CARD_W = this.cw, CARD_H = this.ch;
     const f = this.nodes[from === 'you' ? 'orch' : from], t = this.nodes[to === 'you' ? 'orch' : to];
     const df = this.d(from), dt = this.d(to);
     if (dt > df) {
