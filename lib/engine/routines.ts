@@ -29,7 +29,8 @@ function readRoutines(dir: string): Routine[] {
   let files: string[] = [];
   try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.md')); } catch { return []; }
   return files.map((f) => {
-    const raw = fs.readFileSync(path.join(dir, f), 'utf8');
+    // Git on Windows may check these out with CRLF line endings; parse them the same either way.
+    const raw = fs.readFileSync(path.join(dir, f), 'utf8').replace(/\r\n/g, '\n');
     const m = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
     const meta: Record<string, string> = {};
     (m ? m[1] : '').split('\n').forEach((l) => { const i = l.indexOf(':'); if (i > 0) meta[l.slice(0, i).trim()] = l.slice(i + 1).trim(); });
