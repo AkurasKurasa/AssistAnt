@@ -9,6 +9,7 @@ import Chat from './Chat';
 import Tour, { tourSeen } from './Tour';
 import Workspace, { type Jump } from './Workspace';
 import AntLoader from './AntLoader';
+import LiveSidebar, { type CrewCard } from './LiveSidebar';
 import type { Change } from '@/lib/workspace/types';
 
 type View = 'meet' | 'live' | 'kb' | 'src' | 'con';
@@ -58,6 +59,22 @@ export default function App() {
   // What the current run did, for the result card and the chat hand-off.
   const [run, setRun] = useState<RunInfo>({ task: '', title: '', models: [], seconds: 0, changes: [] });
   const [jump, setJump] = useState<Jump | null>(null);
+  // The Live sidebar: a compact Live view that can sit next to chat. Its open state is remembered per browser.
+  const [liveSide, setLiveSideState] = useState(false);
+  const [lineup, setLineup] = useState<string[]>([]);
+  const [crew, setCrew] = useState<Record<string, CrewCard>>({});
+  const [closeChat, setCloseChat] = useState(0);
+  const chatOpenRef = useRef(false);
+  const setLiveSide = (v: boolean | ((x: boolean) => boolean)) => setLiveSideState((x) => {
+    const next = typeof v === 'function' ? v(x) : v;
+    try { localStorage.setItem('assistant-live-sidebar', next ? '1' : '0'); } catch { /* private mode */ }
+    return next;
+  });
+  useEffect(() => { try { if (localStorage.getItem('assistant-live-sidebar') === '1') setLiveSideState(true); } catch { /* private mode */ } }, []);
+  const card = (id: string, patch: Partial<CrewCard>) => setCrew((c) => {
+    const base: CrewCard = c[id] ?? { state: 'queued', text: '', model: '' };
+    return { ...c, [id]: { ...base, ...patch } };
+  });
 
   // First visit: start the guided tour once the page has settled.
   useEffect(() => { if (tourSeen()) return; const t = setTimeout(() => setTourOpen(true), 700); return () => clearTimeout(t); }, []);
@@ -112,12 +129,12 @@ export default function App() {
   async function handle(e: RunEvent) {
     const f = floor.current!;
     switch (e.t) {
-      case 'start': f.reset(); f.busy(true); setMsgs([]); setTray({ kind: 'working' }); setRunning(true); setView('live'); setRunSince((e.at ?? Date.now()) - 1000); refreshWs(); setRun({ task: e.task, title: '', models: [], seconds: 0, changes: [] }); break;
-      case 'plan': setRun((r) => ({ ...r, title: e.title })); f.setLineup(e.lineup); await new Promise((r) => setTimeout(r, 700)); break;
+      case 'start': f.reset(); f.busy(true); setMsgs([]); setTray({ kind: 'working' }); setRunning(true); setView('live'); setRunSince((e.at ?? Date.now()) - 1000); refreshWs(); setRun({ task: e.task, title: '', models: [], seconds: 0, changes: [] }); setLineup([]); setCrew({}); if (chatOpenRef.current) setLiveSide(true); break;
+      case 'plan': setRun((r) => ({ ...r, title: e.title })); setLineup(e.lineup.flat()); f.setLineup(e.lineup); await new Promise((r) => setTimeout(r, 700)); break;
       case 'orch': f.orch(e.text); break;
       case 'msg': await f.msg(e.from, e.to, e.label, e.kind); addMsg({ from: e.from, to: e.to, text: e.text, kind: e.kind }); break;
-      case 'work': refreshWs(); if (!NOT_A_MODEL.test(e.model)) setRun((r) => (r.models.includes(e.model) ? r : { ...r, models: [...r.models, e.model] })); await f.work(e.agent, e.text, e.model); break;
-      case 'state': f.setState(e.agent, e.state === 'ready' ? 'ready' : e.state); break;
+      case 'work': refreshWs(); card(e.agent, { state: 'working', text: e.text, model: e.model }); if (!NOT_A_MODEL.test(e.model)) setRun((r) => (r.models.includes(e.model) ? r : { ...r, models: [...r.models, e.model] })); await f.work(e.agent, e.text, e.model); break;
+      case 'state': card(e.agent, { state: e.state }); f.setState(e.agent, e.state === 'ready' ? 'ready' : e.state); break;
       case 'sys': addMsg({ from: 'orch', text: e.text, kind: 'sys' }); break;
       case 'ask': setTray(e.kind === 'approve' ? { kind: 'approve', id: e.id, items: e.items, answers: e.items.map(() => undefined) } : { kind: 'form', id: e.id, title: e.title, fields: e.fields }); break;
       case 'answered': setTray({ kind: 'working' }); break;
@@ -125,6 +142,7 @@ export default function App() {
       case 'error': addMsg({ from: 'orch', text: 'Error: ' + e.text, kind: 'alert' }); break;
       case 'end': {
         f.finish(); setRunning(false); loadSources(); refreshWs();
+        setCrew((c) => Object.fromEntries(Object.entries(c).map(([k, v]) => [k, { ...v, state: 'done' }])));
         const started = runSinceRef.current;
         fetch('/api/workspace').then((r) => r.json()).then((j) => setRun((r) => ({ ...r, seconds: started ? Math.round((Date.now() - started - 1000) / 1000) : 0, changes: (j.changes || []).filter((c: Change) => started !== null && c.at >= started) }))).catch(() => {});
         break;
@@ -173,6 +191,8 @@ export default function App() {
     const j = await r.json();
     if (j.id) { setChatOrigin(null); setChatFirst(null); setChatId(j.id); setChatOpen(true); }
   }
+
+  useEffect(() => { chatOpenRef.current = chatOpen; }, [chatOpen]);
 
   function chatClosed() {
     setChatOpen(false); setTask(''); loadChats();
@@ -227,6 +247,7 @@ export default function App() {
       <header className="bar">
         <div className="brand"><span className="mark" dangerouslySetInnerHTML={{ __html: LOGO_SVG }} /><span className="wordmark">Assist<span className="ant">Ant</span></span></div>
         <div className="bar-right">
+          <button className={'live-toggle' + (liveSide ? ' on' : '')} type="button" aria-pressed={liveSide} onClick={() => setLiveSide((v) => !v)}><span className={'live-dot' + (running ? ' on' : '')} />Live</button>
           <button className="tour-open" type="button" onClick={() => setTourOpen(true)}>Take the tour</button>
           <span className="mode-pill">{mode === 'notion' ? 'Notion' : 'Demo data'}</span>
           {install && <button className="install" type="button" onClick={async () => { install.prompt(); await install.userChoice; setInstall(null); }}>Install app</button>}
@@ -259,7 +280,9 @@ export default function App() {
         </div>
       )}
       <Tour open={tourOpen} onClose={() => setTourOpen(false)} onView={setView} onTry={() => { setView('live'); send('Give me my morning brief'); }} />
-      <Chat open={chatOpen} origin={chatOrigin} first={chatFirst} chatId={chatId} onClose={chatClosed} onRun={(id) => { attach(id); setView('live'); }} />
+      <LiveSidebar open={liveSide} onClose={() => setLiveSide(false)} running={running} title={run.title} since={runSince} lineup={lineup} crew={crew} msgs={msgs} refresh={wsTick}
+        onFull={() => { setLiveSide(false); if (chatOpenRef.current) setCloseChat((n) => n + 1); setView('live'); setTimeout(() => document.querySelector('.floor-scroll')?.scrollIntoView({ block: 'start' }), 450); }} />
+      <Chat liveOn={liveSide} onLive={() => setLiveSide((v) => !v)} forceClose={closeChat} onStarted={(id) => attach(id)} open={chatOpen} origin={chatOrigin} first={chatFirst} chatId={chatId} onClose={chatClosed} onRun={(id) => { attach(id); setView('live'); }} />
 
       <div className="tabs" role="tablist" aria-label="Views">
         <button className="tab" role="tab" type="button" aria-selected={view === 'meet'} onClick={() => setView('meet')}>Meet the crew</button>
