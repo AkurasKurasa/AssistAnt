@@ -24,11 +24,16 @@ const STORE_KEY = 'assistant-tour-v1';
 const GAP = 12;   // space between spotlight and card
 const PAD = 8;    // spotlight padding around the target
 
+// The tour starts every time the showcase is opened (each new tab or window), but not again on a
+// reload in the same tab once it was finished or skipped. ?tour=1 always starts it.
 export function tourSeen(): boolean {
-  try { return localStorage.getItem(STORE_KEY) === 'done'; } catch { return true; } // no storage: don't nag
+  try {
+    if (new URLSearchParams(location.search).has('tour')) return false;
+    return sessionStorage.getItem(STORE_KEY) === 'done';
+  } catch { return false; } // no storage: show it
 }
 function markSeen() {
-  try { localStorage.setItem(STORE_KEY, 'done'); } catch { /* private mode: fine */ }
+  try { sessionStorage.setItem(STORE_KEY, 'done'); } catch { /* private mode: fine */ }
 }
 
 interface Box { top: number; left: number; width: number; height: number }
