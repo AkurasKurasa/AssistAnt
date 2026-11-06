@@ -15,7 +15,7 @@ export function connectors(): Connector[] {
     { id: 'drive', name: 'Google Drive', does: 'Files like drafts and reports.', connected: false, setup: 'Coming next: uses the same Google service account.' },
     { id: 'github', name: 'GitHub', does: 'Issues and pull requests.', connected: false, setup: 'Coming next: add a GITHUB_TOKEN.' },
   ];
-  // The public demo's fake workspace stands in for Notion and Sheets. The others aren't built yet.
+  // The public demo's fake workspace stands in for Notion, Sheets and Docs. The others aren't built yet.
   if (!PUBLIC_DEMO) return list;
-  return list.map((c) => (c.id === 'notion' || c.id === 'sheets' ? { ...c, connected: true, does: c.does + ' Fake sample data in this demo.', setup: 'Public demo: connected to fake sample data.' } : c));
+  return list.map((c) => (c.id === 'notion' || c.id === 'sheets' || c.id === 'docs' ? { ...c, connected: true, does: c.does + ' Fake sample data in this demo.', setup: 'Public demo: connected to fake sample data.' } : c));
 }

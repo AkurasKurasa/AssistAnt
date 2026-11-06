@@ -60,6 +60,41 @@ describe('every built-in routine runs on the sample data', () => {
     expect(result(ev)?.say).toMatch(/Logged today at \$2629\.79/);
   });
 
+  it('logs every change the crew makes, per visitor, for the Live view', async () => {
+    const { runAs } = await import('../lib/visitor');
+    const { demoView } = await import('../lib/workspace/demo');
+    const A = 'visitor-changes-aaaa', B = 'visitor-changes-bbbb';
+    await run('Add mangoes to groceries', A);
+    const a = runAs(A, demoView);
+    expect(a.changes.map((c) => [c.app, c.what])).toContainEqual(['notion', 'Added mangoes to the Grocery List']);
+    expect(a.groceries).toContain('mangoes');
+    expect(runAs(B, demoView).changes).toEqual([]);
+  });
+
+  it('finish-day writes a Daily recap doc and the morning brief saves itself in Docs', async () => {
+    const { runAs } = await import('../lib/visitor');
+    const { demoView } = await import('../lib/workspace/demo');
+    const V = 'visitor-docs-cccc';
+    await run('Run my finish-day', V);
+    await run('Give me my morning brief', V);
+    const v = runAs(V, demoView);
+    expect(v.docs.map((d) => d.title.split(' · ')[0]).sort()).toEqual(['Daily recap', 'Morning brief']);
+    expect(v.docs.find((d) => d.title.startsWith('Daily recap'))?.body).toMatch(/Done today[\s\S]*On tomorrow’s page/);
+    const apps = new Set(v.changes.map((c) => c.app));
+    expect([...apps].sort()).toEqual(['docs', 'notion']);
+  });
+
+  it('the portfolio adds a row to the fake Sheet, after the seeded history', async () => {
+    const { runAs } = await import('../lib/visitor');
+    const { demoView } = await import('../lib/workspace/demo');
+    const V = 'visitor-sheets-dddd';
+    expect(runAs(V, demoView).snapshots).toHaveLength(3);
+    await run('Log my portfolio', V);
+    const v = runAs(V, demoView);
+    expect(v.snapshots).toHaveLength(4);
+    expect(v.changes.at(-1)).toMatchObject({ app: 'sheets' });
+  });
+
   it('the grocery check skips synonyms of what is already on the list', async () => {
     const ev = await run('Add coriander and eggs to groceries', 'visitor-routines-grocery02');
     expect(result(ev)?.say).toMatch(/Added coriander.*Skipped eggs/);

@@ -2,17 +2,19 @@ import type { Tier } from '../types';
 import { PROVIDERS, ORDER, RateLimitError, type ProviderId } from './providers';
 import { CATALOG_ORDER } from './catalog';
 import { getState, bump, markExhausted } from '../state';
-import { PUBLIC_DEMO } from '../visitor';
+import { PUBLIC_DEMO, hasPass } from '../visitor';
 
-// The public demo holds no keys, so it only offers the keyless free gateways, then plain rules.
-const offered = (id: ProviderId) => !PUBLIC_DEMO || !!PROVIDERS[id].keyless;
+// The public demo offers everyone the keyless free gateways. Visitors with the access code (hasPass) also get the
+// providers whose keys are set on the host. Claude Code, Ollama and the paid API only ever run locally.
+const LOCAL_ONLY = new Set<ProviderId>(['claudesub', 'ollama', 'claudeapi']);
+const offered = (id: ProviderId) => !PUBLIC_DEMO || !!PROVIDERS[id].keyless || (hasPass() && !LOCAL_ONLY.has(id));
 
 // Each agent asks for a line of models. The router takes the first one that's available.
 // Free providers from the awesome-free-llm-apis list slot in after Groq and Gemini.
 export const CHAINS: Record<Exclude<Tier, 'code'>, ProviderId[]> = {
-  best: ['claudesub', 'groq120', ...CATALOG_ORDER, 'openrouter', 'ollama'],
-  smart: ['flash', 'groq120', ...CATALOG_ORDER, 'openrouter', 'ollama', 'claudeapi'],
-  fast: ['groq20', 'lite', 'qwen', ...CATALOG_ORDER, 'openrouter', 'ollama', 'claudeapi'],
+  best: ['claudesub', 'freellmapi', 'groq120', ...CATALOG_ORDER, 'openrouter', 'ollama'],
+  smart: ['flash', 'freellmapi', 'groq120', ...CATALOG_ORDER, 'openrouter', 'ollama', 'claudeapi'],
+  fast: ['groq20', 'freellmapi', 'lite', 'qwen', ...CATALOG_ORDER, 'openrouter', 'ollama', 'claudeapi'],
 };
 
 // When a model hits its limit, climb one tier for a better model before going down the line:
@@ -50,7 +52,8 @@ export async function status(id: ProviderId): Promise<SourceStatus> {
   if (s.exhausted[id] || (cap > 0 && used >= cap)) {
     return { ...base, health: 'full', label: p.sub ? 'Daily limit reached' : 'Used up today', detail: p.sub ? 'Daily limit reached' : 'Used up today' + (p.reset ? ' · ' + p.reset : ''), configurable: true };
   }
-  const detail = p.sub ? `Via Claude Code · ${used} of ${cap} today` : p.paid ? 'Paid per use' : cap ? `${used.toLocaleString()} of ${cap.toLocaleString()} today` : `${used} today${p.keyless ? ' · no key' : ''}`;
+  const extra = setup.note ? ` · ${setup.note}` : '';
+  const detail = (p.sub ? `Via Claude Code · ${used} of ${cap} today` : p.paid ? 'Paid per use' : cap ? `${used.toLocaleString()} of ${cap.toLocaleString()} today` : `${used} today${p.keyless ? ' · no key' : ''}`) + extra;
   return { ...base, health: 'ok', label: 'Available', detail, configurable: true };
 }
 

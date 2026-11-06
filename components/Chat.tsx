@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import AntLoader from './AntLoader';
 
 // Full-screen chat that grows out of the home input. Answers roll in like credits:
 // the newest one zooms into place while older ones shrink and drift up.
@@ -15,9 +16,13 @@ interface Props {
   chatId: string | null;         // reopen a saved chat
   onClose: (saved: boolean) => void;
   onRun: (runId: string) => void;
+  liveOn?: boolean;              // the Live sidebar is showing
+  onLive?: () => void;           // toggle it
+  forceClose?: number;           // bump to close the chat (e.g. "Open the full Live view")
+  onStarted?: (runId: string) => void; // a message here started a run
 }
 
-export default function Chat({ open, origin, first, chatId, onClose, onRun }: Props) {
+export default function Chat({ open, origin, first, chatId, onClose, onRun, liveOn, onLive, forceClose, onStarted }: Props) {
   const [phase, setPhase] = useState<'closed' | 'opening' | 'open' | 'closing'>('closed');
   const [turns, setTurns] = useState<Turn[]>([]);
   const [id, setId] = useState<string | null>(null);
@@ -66,6 +71,8 @@ export default function Chat({ open, origin, first, chatId, onClose, onRun }: Pr
     setTimeout(() => { setPhase('closed'); onClose(turns.length > 0); }, 420);
   }, [busy, onClose, turns.length]);
 
+  useEffect(() => { if (forceClose && open) close(); }, [forceClose]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!open) return;
     const k = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
@@ -97,7 +104,7 @@ export default function Chat({ open, origin, first, chatId, onClose, onRun }: Pr
           else if (e.t === 'step') patch((t) => ({ ...t, steps: [...t.steps, e.text] }));
           else if (e.t === 'sources') patch((t) => ({ ...t, sources: e.items }));
           else if (e.t === 'answer') patch((t) => ({ ...t, answer: e.text, model: e.model, pending: false }));
-          else if (e.t === 'run') { patch((t) => ({ ...t, run: { id: e.id, title: e.title } })); }
+          else if (e.t === 'run') { patch((t) => ({ ...t, run: { id: e.id, title: e.title } })); onStarted?.(e.id); }
         }
       }
     } catch (err: any) {
@@ -115,13 +122,16 @@ export default function Chat({ open, origin, first, chatId, onClose, onRun }: Pr
     : r ? `inset(${r.top}px ${Math.max(0, window.innerWidth - r.right)}px ${Math.max(0, window.innerHeight - r.bottom)}px ${r.left}px round 16px)` : 'inset(40% 20% 40% 20% round 16px)';
 
   return (
-    <div className={'chatx ' + phase} style={{ clipPath: clip }} role="dialog" aria-modal="true" aria-label="Chat with AssistAnt">
+    <div className={'chatx ' + phase + (liveOn ? ' with-live' : '')} style={{ clipPath: clip }} role="dialog" aria-modal="true" aria-label="Chat with AssistAnt">
       <header className="chatx-bar">
         <button className="chatx-return" type="button" onClick={close} disabled={busy}>
           <kbd aria-hidden="true">{'↵'}</kbd> Return
         </button>
         <span className="chatx-title">{title || 'New chat'}</span>
-        <span className="chatx-saved">{id && turns.length ? 'Saved' : ''}</span>
+        <span className="chatx-tools">
+          <span className="chatx-saved">{id && turns.length ? 'Saved' : ''}</span>
+          {onLive && <button type="button" className={'live-toggle' + (liveOn ? ' on' : '')} aria-pressed={!!liveOn} onClick={onLive}><span className="live-dot" />Live</button>}
+        </span>
       </header>
 
       <div className="chatx-roll" ref={rollRef}>
@@ -136,10 +146,10 @@ export default function Chat({ open, origin, first, chatId, onClose, onRun }: Pr
                 {open && t.steps.length > 0 && (
                   <ol className="credit-steps" aria-label="How AssistAnt worked it out">
                     {t.steps.map((s, k) => <li key={k} style={{ animationDelay: `${k * 60}ms` }}>{s}</li>)}
-                    {t.pending && <li className="thinking">thinking<span className="dots"><i /><i /><i /></span></li>}
+                    {t.pending && <li className="thinking"><AntLoader size={34} />thinking</li>}
                   </ol>
                 )}
-                {t.pending && !t.steps.length && <ol className="credit-steps"><li className="thinking">thinking<span className="dots"><i /><i /><i /></span></li></ol>}
+                {t.pending && !t.steps.length && <ol className="credit-steps"><li className="thinking"><AntLoader size={34} />thinking</li></ol>}
                 {t.answer && (
                   <p className="credit-a">
                     {t.answer.split(/(\s+)/).map((w, k) => <span key={k} style={last ? { animationDelay: `${Math.min(k, 160) * 14}ms` } : undefined}>{w}</span>)}

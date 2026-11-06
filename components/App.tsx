@@ -7,6 +7,10 @@ import { ICON, LOGO_SVG, ENG_LABEL } from './icons';
 import { Floor } from './floor';
 import Chat from './Chat';
 import Tour, { tourSeen } from './Tour';
+import Workspace, { type Jump } from './Workspace';
+import AntLoader from './AntLoader';
+import LiveSidebar, { type CrewCard } from './LiveSidebar';
+import type { Change } from '@/lib/workspace/types';
 
 type View = 'meet' | 'live' | 'kb' | 'src' | 'con';
 interface ChatMeta { id: string; title: string; updatedAt: string; turns: number }
@@ -21,6 +25,8 @@ type Tray =
 
 interface Source { id: string; vendor: string; name: string; health: string; label: string; detail: string; on: boolean; configurable: boolean; sub?: boolean; paid?: boolean; cap: number; keyUrl?: string; trains?: boolean; keyless?: boolean; catalog?: boolean }
 interface Connector { id: string; name: string; does: string; connected: boolean; setup: string }
+interface RunInfo { task: string; title: string; models: string[]; seconds: number; changes: Change[] }
+const NOT_A_MODEL = /^(plain code|routing|plain rules)$|api$/; // work labels that aren't AI models
 
 const SUGGEST = ['Run my finish-day', 'What’s worrying me this week?', 'Add eggs to groceries'];
 const ago = (iso: string) => { const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`; };
@@ -43,7 +49,32 @@ export default function App() {
   const [mode, setMode] = useState<'demo' | 'notion'>('demo');
   const [listDate, setListDate] = useState('');
   const [publicDemo, setPublicDemo] = useState(false);
+  const [pass, setPass] = useState(false); // opened with the showcase access code
   const [tourOpen, setTourOpen] = useState(false);
+  const [wsTick, setWsTick] = useState(0); // bump to refresh the Workspace panel
+  const [runSince, setRunSince] = useState<number | null>(null); // changes after this are "just now"
+  const runSinceRef = useRef<number | null>(null);
+  useEffect(() => { runSinceRef.current = runSince; }, [runSince]);
+  const refreshWs = () => setWsTick((n) => n + 1);
+  // What the current run did, for the result card and the chat hand-off.
+  const [run, setRun] = useState<RunInfo>({ task: '', title: '', models: [], seconds: 0, changes: [] });
+  const [jump, setJump] = useState<Jump | null>(null);
+  // The Live sidebar: a compact Live view that can sit next to chat. Its open state is remembered per browser.
+  const [liveSide, setLiveSideState] = useState(false);
+  const [lineup, setLineup] = useState<string[]>([]);
+  const [crew, setCrew] = useState<Record<string, CrewCard>>({});
+  const [closeChat, setCloseChat] = useState(0);
+  const chatOpenRef = useRef(false);
+  const setLiveSide = (v: boolean | ((x: boolean) => boolean)) => setLiveSideState((x) => {
+    const next = typeof v === 'function' ? v(x) : v;
+    try { localStorage.setItem('assistant-live-sidebar', next ? '1' : '0'); } catch { /* private mode */ }
+    return next;
+  });
+  useEffect(() => { try { if (localStorage.getItem('assistant-live-sidebar') === '1') setLiveSideState(true); } catch { /* private mode */ } }, []);
+  const card = (id: string, patch: Partial<CrewCard>) => setCrew((c) => {
+    const base: CrewCard = c[id] ?? { state: 'queued', text: '', model: '' };
+    return { ...c, [id]: { ...base, ...patch } };
+  });
 
   // First visit: start the guided tour once the page has settled.
   useEffect(() => { if (tourSeen()) return; const t = setTimeout(() => setTourOpen(true), 700); return () => clearTimeout(t); }, []);
@@ -70,7 +101,7 @@ export default function App() {
 
   const loadSources = useCallback(async () => {
     const j = await (await fetch('/api/sources')).json();
-    setSources(j.sources); setBudget(j.budget); setMode(j.mode); setListDate(j.catalogUpdated || ''); setPublicDemo(!!j.publicDemo);
+    setSources(j.sources); setBudget(j.budget); setMode(j.mode); setListDate(j.catalogUpdated || ''); setPublicDemo(!!j.publicDemo); setPass(!!j.pass);
   }, []);
   const loadCons = useCallback(async () => { setCons((await (await fetch('/api/connectors')).json()).connectors); }, []);
   const loadChats = useCallback(async () => { setChats((await (await fetch('/api/chats')).json()).chats); }, []);
@@ -98,18 +129,24 @@ export default function App() {
   async function handle(e: RunEvent) {
     const f = floor.current!;
     switch (e.t) {
-      case 'start': f.reset(); f.busy(true); setMsgs([]); setTray({ kind: 'working' }); setRunning(true); setView('live'); break;
-      case 'plan': f.setLineup(e.lineup); await new Promise((r) => setTimeout(r, 700)); break;
+      case 'start': f.reset(); f.busy(true); setMsgs([]); setTray({ kind: 'working' }); setRunning(true); setView('live'); setRunSince((e.at ?? Date.now()) - 1000); refreshWs(); setRun({ task: e.task, title: '', models: [], seconds: 0, changes: [] }); setLineup([]); setCrew({}); if (chatOpenRef.current) setLiveSide(true); break;
+      case 'plan': setRun((r) => ({ ...r, title: e.title })); setLineup(e.lineup.flat()); f.setLineup(e.lineup); await new Promise((r) => setTimeout(r, 700)); break;
       case 'orch': f.orch(e.text); break;
       case 'msg': await f.msg(e.from, e.to, e.label, e.kind); addMsg({ from: e.from, to: e.to, text: e.text, kind: e.kind }); break;
-      case 'work': await f.work(e.agent, e.text, e.model); break;
-      case 'state': f.setState(e.agent, e.state === 'ready' ? 'ready' : e.state); break;
+      case 'work': refreshWs(); card(e.agent, { state: 'working', text: e.text, model: e.model }); if (!NOT_A_MODEL.test(e.model)) setRun((r) => (r.models.includes(e.model) ? r : { ...r, models: [...r.models, e.model] })); await f.work(e.agent, e.text, e.model); break;
+      case 'state': card(e.agent, { state: e.state }); f.setState(e.agent, e.state === 'ready' ? 'ready' : e.state); break;
       case 'sys': addMsg({ from: 'orch', text: e.text, kind: 'sys' }); break;
       case 'ask': setTray(e.kind === 'approve' ? { kind: 'approve', id: e.id, items: e.items, answers: e.items.map(() => undefined) } : { kind: 'form', id: e.id, title: e.title, fields: e.fields }); break;
       case 'answered': setTray({ kind: 'working' }); break;
       case 'result': setTray({ kind: 'result', say: e.say, rows: e.rows, note: e.note }); break;
       case 'error': addMsg({ from: 'orch', text: 'Error: ' + e.text, kind: 'alert' }); break;
-      case 'end': f.finish(); setRunning(false); loadSources(); break;
+      case 'end': {
+        f.finish(); setRunning(false); loadSources(); refreshWs();
+        setCrew((c) => Object.fromEntries(Object.entries(c).map(([k, v]) => [k, { ...v, state: 'done' }])));
+        const started = runSinceRef.current;
+        fetch('/api/workspace').then((r) => r.json()).then((j) => setRun((r) => ({ ...r, seconds: started ? Math.round((Date.now() - started - 1000) / 1000) : 0, changes: (j.changes || []).filter((c: Change) => started !== null && c.at >= started) }))).catch(() => {});
+        break;
+      }
     }
   }
 
@@ -144,6 +181,18 @@ export default function App() {
     setChatOrigin(askRef.current?.getBoundingClientRect() ?? null);
     setChatFirst(message); setChatId(id); setChatOpen(true);
   }
+
+  async function chatAboutRun() {
+    if (tray.kind !== 'result') return;
+    const lines = [tray.say];
+    if (tray.rows?.length) lines.push('', ...tray.rows.map((r) => `- ${r[0]}: ${r[1]}`));
+    if (run.changes.length) lines.push('', 'What changed:', ...run.changes.map((c) => `- ${c.what}`));
+    const r = await fetch('/api/chats', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ seed: { q: run.task || run.title, answer: lines.join('\n'), runId, title: run.title } }) });
+    const j = await r.json();
+    if (j.id) { setChatOrigin(null); setChatFirst(null); setChatId(j.id); setChatOpen(true); }
+  }
+
+  useEffect(() => { chatOpenRef.current = chatOpen; }, [chatOpen]);
 
   function chatClosed() {
     setChatOpen(false); setTask(''); loadChats();
@@ -198,13 +247,14 @@ export default function App() {
       <header className="bar">
         <div className="brand"><span className="mark" dangerouslySetInnerHTML={{ __html: LOGO_SVG }} /><span className="wordmark">Assist<span className="ant">Ant</span></span></div>
         <div className="bar-right">
+          <button className={'live-toggle' + (liveSide ? ' on' : '')} type="button" aria-pressed={liveSide} onClick={() => setLiveSide((v) => !v)}><span className={'live-dot' + (running ? ' on' : '')} />Live</button>
           <button className="tour-open" type="button" onClick={() => setTourOpen(true)}>Take the tour</button>
           <span className="mode-pill">{mode === 'notion' ? 'Notion' : 'Demo data'}</span>
           {install && <button className="install" type="button" onClick={async () => { install.prompt(); await install.userChoice; setInstall(null); }}>Install app</button>}
           <span className="date">{date}</span>
         </div>
       </header>
-      {publicDemo && <p className="demo-banner">Public demo · fake Notion and Sheets data, free keyless models · your changes are private to you and reset when the server sleeps.</p>}
+      {publicDemo && <p className="demo-banner">{pass ? 'Showcase pass · fake Notion, Sheets and Docs data, full set of AI models' : 'Public demo · fake Notion, Sheets and Docs data, free keyless models'} · your changes are private to you and reset when the server sleeps.</p>}
 
       <section className="head">
         <h1 className="wordmark">Assist<span className="ant">Ant</span></h1>
@@ -230,7 +280,9 @@ export default function App() {
         </div>
       )}
       <Tour open={tourOpen} onClose={() => setTourOpen(false)} onView={setView} onTry={() => { setView('live'); send('Give me my morning brief'); }} />
-      <Chat open={chatOpen} origin={chatOrigin} first={chatFirst} chatId={chatId} onClose={chatClosed} onRun={(id) => { attach(id); setView('live'); }} />
+      <LiveSidebar open={liveSide} onClose={() => setLiveSide(false)} running={running} title={run.title} since={runSince} lineup={lineup} crew={crew} msgs={msgs} refresh={wsTick}
+        onFull={() => { setLiveSide(false); if (chatOpenRef.current) setCloseChat((n) => n + 1); setView('live'); setTimeout(() => document.querySelector('.floor-scroll')?.scrollIntoView({ block: 'start' }), 450); }} />
+      <Chat liveOn={liveSide} onLive={() => setLiveSide((v) => !v)} forceClose={closeChat} onStarted={(id) => attach(id)} open={chatOpen} origin={chatOrigin} first={chatFirst} chatId={chatId} onClose={chatClosed} onRun={(id) => { attach(id); setView('live'); }} />
 
       <div className="tabs" role="tablist" aria-label="Views">
         <button className="tab" role="tab" type="button" aria-selected={view === 'meet'} onClick={() => setView('meet')}>Meet the crew</button>
@@ -260,10 +312,11 @@ export default function App() {
           <div className="floor" ref={floorRef} aria-label="The crew at work">
             <span className="floor-label" style={{ top: 14 }}>The floor</span>
             <div className="bench-line" />
-            <span className="floor-label" style={{ top: 548 }}>Bench</span>
+            <span className="floor-label" style={{ top: 638 }}>Bench</span>
             <svg id="wires" aria-hidden="true"><g id="edgeG" /></svg>
           </div>
         </div>
+        <Workspace refresh={wsTick} since={runSince} jump={jump} />
         <div className="lower">
           <section aria-label="Conversation">
             <h2>Conversation <small>{msgs.filter((m) => m.kind !== 'sys').length} messages</small></h2>
@@ -280,7 +333,7 @@ export default function App() {
           <div className="side">
             <section aria-label="Result">
               <h2>Result</h2>
-              <TrayView tray={tray} decide={decide} submit={(id, v) => answer(id, v)} approveAll={() => { if (tray.kind === 'approve') { const a = tray.items.map(() => true); setTray({ ...tray, answers: a }); answer(tray.id, a); } }} />
+              <TrayView tray={tray} run={run} since={runSince} onChat={chatAboutRun} onAgain={() => run.task && send(run.task)} onJump={(c) => setJump({ app: c.app, ref: c.ref, n: Date.now() })} decide={decide} submit={(id, v) => answer(id, v)} approveAll={() => { if (tray.kind === 'approve') { const a = tray.items.map(() => true); setTray({ ...tray, answers: a }); answer(tray.id, a); } }} />
             </section>
           </div>
         </div>
@@ -367,10 +420,23 @@ export default function App() {
   );
 }
 
-function TrayView({ tray, decide, submit, approveAll }: { tray: Tray; decide: (i: number, v: boolean) => void; submit: (id: string, v: Record<string, string>) => void; approveAll: () => void }) {
+const APP_LOGO: Record<Change['app'], string> = { notion: '/logos/notion.png', sheets: '/logos/sheets.png', docs: '/logos/docs.png' };
+
+function Elapsed({ since }: { since: number | null }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+  return <>{since ? Math.max(0, Math.round((now - since - 1000) / 1000)) : 0}s</>;
+}
+
+function TrayView({ tray, run, since, onChat, onAgain, onJump, decide, submit, approveAll }: { tray: Tray; run: RunInfo; since: number | null; onChat: () => void; onAgain: () => void; onJump: (c: Change) => void; decide: (i: number, v: boolean) => void; submit: (id: string, v: Record<string, string>) => void; approveAll: () => void }) {
   const [form, setForm] = useState<Record<string, string>>({});
   if (tray.kind === 'idle') return <div className="tray"><p className="none">Answers and approvals land here.</p></div>;
-  if (tray.kind === 'working') return <div className="tray"><p className="none">Working on it{'…'}</p></div>;
+  if (tray.kind === 'working') return (
+    <div className="tray tray-working">
+      <AntLoader size={84} />
+      <p><strong>{run.title || 'The crew'} is working{'…'}</strong><span className="res-meta"><Elapsed since={since} /> · watch the floor and the Workspace</span></p>
+    </div>
+  );
   if (tray.kind === 'approve') return (
     <div className="tray wait">
       <p><strong>{tray.items.length > 1 ? `${tray.items.length} changes need` : 'One change needs'} your OK.</strong></p>
@@ -395,10 +461,29 @@ function TrayView({ tray, decide, submit, approveAll }: { tray: Tray; decide: (i
     </form>
   );
   return (
-    <div className="tray">
+    <div className="tray tray-result">
+      <div className="res-head">
+        <span className="res-check" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="#FFF" strokeWidth="1.8"><path d="M1.5 5.2l2.3 2.3 4.7-5" /></svg></span>
+        <strong>{run.title || 'Done'}</strong>
+        <span className="res-meta">{run.seconds ? `done in ${run.seconds}s` : 'done'}{run.models.length ? ` · ${run.models.join(', ')}` : ' · plain rules'}</span>
+      </div>
       <p className="say">{tray.say}</p>
-      {tray.rows && tray.rows.length > 0 && <div>{tray.rows.map((r, i) => <div className="rrow" key={i}><span>{r[0]}</span><span>{r[1]}</span></div>)}</div>}
+      {tray.rows && tray.rows.length > 0 && <div className="res-rows">{tray.rows.map((r, i) => <div className="rrow" key={i}><span>{r[0]}</span><span>{r[1]}</span></div>)}</div>}
+      {run.changes.length > 0 && (
+        <div className="res-changes">
+          <div className="res-sub">What changed <small>{run.changes.length}</small></div>
+          <ul>{run.changes.map((c) => (
+            <li key={c.id}><button type="button" onClick={() => onJump(c)}><img src={APP_LOGO[c.app]} alt="" width={14} height={14} /><span>{c.what}</span></button></li>
+          ))}</ul>
+        </div>
+      )}
       {tray.note && <p className="s-muted" style={{ fontSize: 13 }}>{tray.note}</p>}
+      <button type="button" className="res-cta" onClick={onChat}>
+        <span className="res-cta-ant" aria-hidden="true" dangerouslySetInnerHTML={{ __html: LOGO_SVG.replace('width="24" height="24"', 'width="34" height="34"') }} />
+        <span className="res-cta-text"><b>Your results are ready!</b><small>Tap to chat about them with AssistAnt</small></span>
+        <span className="res-cta-arrow" aria-hidden="true">{'→'}</span>
+      </button>
+      {run.task && <button type="button" className="res-again" onClick={onAgain}>Run it again</button>}
     </div>
   );
 }

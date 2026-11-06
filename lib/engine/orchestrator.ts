@@ -11,7 +11,7 @@ export function startRun(task: string, opts: { scheduled?: boolean } = {}): Run 
   for (const [id, r] of runs) if (r.done && Date.now() - r.startedAt > 6 * 3600_000) runs.delete(id);
 
   (async () => {
-    run.emit({ t: 'start', task, scheduled: opts.scheduled });
+    run.emit({ t: 'start', task, scheduled: opts.scheduled, at: run.startedAt });
     run.msg('you', 'orch', task, task);
     try {
       const routine = matchRoutine(task);

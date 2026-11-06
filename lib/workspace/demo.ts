@@ -1,6 +1,6 @@
 import type { DayBlock, Item, Note, Reminder, SnapshotRow } from '../types';
-import type { NewTask, Workspace } from './types';
-import { addDays, today, weekday } from '../time';
+import type { Change, Doc, NewTask, Workspace } from './types';
+import { addDays, shortDate, today, weekday } from '../time';
 import { visitorId } from '../visitor';
 
 // Sample workspace for a fictional user, laid out like a Notion Tasks page. Lives in memory while the server runs.
@@ -48,7 +48,9 @@ function seed() {
     { title: 'Chore and Habits List', text: 'Daily: dishes, tidy the desk\nWeekly: Weekly House Clean (Saturdays only)\nEvery 2 weeks: Change bedsheets\nMonthly: Clean the fridge (first Sunday of the month only)' },
     { title: 'Grocery List', text: '' },
   ];
-  return { days, reminders, notes, groceries: ['rice', 'eggs', 'chicken breast', 'oats', 'bananas', 'coffee'], snapshots: [] as SnapshotRow[] };
+  // A few earlier Daily Snapshot rows, so the sheet has history to compare against.
+  const snapshots: SnapshotRow[] = [3, 2, 1].map((n, k) => ({ date: addDays(t, -n), brokerA: [790.1 + k * 11.2, 40, 0], brokerB: [1498.6 + k * 15.8, 120.5, 0], wallet: [92.4 + k * 1.9, 12, 0], rate: 0.92, notes: 'sample' }));
+  return { days, reminders, notes, groceries: ['rice', 'eggs', 'chicken breast', 'oats', 'bananas', 'coffee'], snapshots, docs: [] as Doc[], changes: [] as Change[] };
 }
 
 function nextSaturday(d: string) { let x = d; do { x = addDays(x, 1); } while (weekday(x) !== 'Saturday'); return x; }
@@ -65,26 +67,52 @@ function db() {
   return e.data;
 }
 
+function log(app: Change['app'], what: string, ref: string) {
+  const c = db().changes;
+  c.push({ id: id(), at: Date.now(), app, what, ref });
+  if (c.length > 60) c.shift();
+}
+
+// Everything the Live view shows of the fake apps, plus what the crew changed.
+export function demoView() {
+  const d = db();
+  return {
+    today: today(),
+    days: Object.values(d.days).map((x) => x.block).sort((a, b) => a.date.localeCompare(b.date)),
+    reminders: d.reminders, notes: d.notes, groceries: d.groceries, snapshots: d.snapshots, docs: d.docs, changes: d.changes,
+  };
+}
+
 export const demo: Workspace = {
   mode: 'demo',
   async getDay(date) { return db().days[date]?.block ?? null; },
   async getTemplate(day) { return template(day); },
   async buildDay(date, _after, tasks) {
-    db().days[date] = { block: { id: id(), date, heading: weekday(date), templateItems: template(weekday(date)), newTasks: tasks.map((t) => item(t.text, false, false, t.children?.map((c) => item(c)))) } };
+    const block = { id: id(), date, heading: weekday(date), templateItems: template(weekday(date)), newTasks: tasks.map((t) => item(t.text, false, false, t.children?.map((c) => item(c)))) };
+    db().days[date] = { block };
+    log('notion', `Built the ${weekday(date)} page with ${tasks.length} new task${tasks.length === 1 ? '' : 's'}`, block.id);
   },
   async addTasks(date, tasks) {
     const d = db().days[date];
     if (!d) return demo.buildDay(date, null, tasks);
-    d.block.newTasks.push(...tasks.map((t) => item(t.text, false, false, t.children?.map((c) => item(c)))));
+    const added = tasks.map((t) => item(t.text, false, false, t.children?.map((c) => item(c))));
+    d.block.newTasks.push(...added);
+    added.forEach((a) => log('notion', `Added “${a.text.replace(/^🎯\s*/, '')}” to ${weekday(date)}`, a.id));
   },
-  async removeDay(block) { delete db().days[block.date]; },
+  async removeDay(block) { delete db().days[block.date]; log('notion', `Removed the ${weekday(block.date)} page`, block.id); },
   async getReminders() { return db().reminders.filter((r) => r.status !== 'Done'); },
-  async markDone(rid) { const r = db().reminders.find((x) => x.id === rid); if (r) r.status = 'Done'; },
-  async setDue(rid, due) { const r = db().reminders.find((x) => x.id === rid); if (r) r.due = due; },
-  async createReminder(r) { db().reminders.push({ id: id(), name: r.name, due: r.due, priority: r.priority, status: 'Not started' }); },
+  async markDone(rid) { const r = db().reminders.find((x) => x.id === rid); if (r) { r.status = 'Done'; log('notion', `Marked “${r.name}” done`, r.id); } },
+  async setDue(rid, due) { const r = db().reminders.find((x) => x.id === rid); if (r) { r.due = due; log('notion', `Moved “${r.name}” to ${shortDate(due)}`, r.id); } },
+  async createReminder(r) { const rid = id(); db().reminders.push({ id: rid, name: r.name, due: r.due, priority: r.priority, status: 'Not started' }); log('notion', `New reminder “${r.name}”, due ${shortDate(r.due)}`, rid); },
   async getNotes() { return db().notes; },
   async getGroceries() { return db().groceries; },
-  async addGroceries(items) { db().groceries.push(...items); },
+  async addGroceries(items) { db().groceries.push(...items); items.forEach((i) => log('notion', `Added ${i} to the Grocery List`, 'g:' + i.toLowerCase())); },
   async lastSnapshot() { const s = db().snapshots; return s[s.length - 1] ?? { date: addDays(today(), -1), brokerA: [812.4, 40, 0], brokerB: [1530.2, 120.5, 0], wallet: [96.1, 12, 0], rate: 0.92, notes: 'sample' }; },
-  async appendSnapshot(row) { db().snapshots.push(row); },
+  async appendSnapshot(row) { db().snapshots.push(row); log('sheets', `New Daily Snapshot row for ${shortDate(row.date)}`, 's:' + row.date); },
+  async writeDoc(title, body) {
+    const docs = db().docs, now = new Date().toISOString();
+    const doc = docs.find((d) => d.title === title); // writing the same title again updates it
+    if (doc) Object.assign(doc, { body, updatedAt: now }); else docs.push({ id: id(), title, body, updatedAt: now });
+    log('docs', `${doc ? 'Updated' : 'Wrote'} “${title}”`, (doc || docs[docs.length - 1]).id);
+  },
 };
